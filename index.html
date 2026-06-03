@@ -287,6 +287,9 @@
         <!-- Stream list -->
         <div class="stream-list" id="streamList" style="display:none"></div>
 
+        <!-- Cancel button shown while connecting -->
+        <button id="cancelBtn" onclick="cancelTorrent()" style="display:none;background:var(--card);border:1px solid var(--border);color:var(--muted);padding:7px 18px;border-radius:7px;cursor:pointer;font-family:DM Sans,sans-serif;font-size:0.8rem;margin-top:4px;">✕ Cancelar e voltar às fontes</button>
+
         <!-- Download bar (shown when playing) -->
         <div class="download-bar" id="downloadBar">
           <span id="downloadFileName">Arquivo pronto para baixar</span>
@@ -372,6 +375,19 @@ function playTorrent(magnetOrUrl, title) {
   showUI('Conectando ao torrent...', true, false);
   document.getElementById('torrentProgress').style.display = 'none';
 
+  // Timeout: se em 20s não tiver peers nem progresso, avisa
+  let timeoutId = setTimeout(() => {
+    if (!currentTorrent) return;
+    if (currentTorrent.numPeers === 0) {
+      showError('Sem peers encontrados para esta fonte. Tente outra opção ou use o Stremio Web.');
+      stopTorrent();
+      return;
+    }
+    if (currentTorrent.downloadSpeed === 0) {
+      document.getElementById('playerStatus').textContent = '⚠️ Download muito lento. Aguarde ou tente outra fonte.';
+    }
+  }, 20000);
+
   wt.add(magnetOrUrl, { announce: [
     'wss://tracker.btorrent.xyz',
     'wss://tracker.openwebtorrent.com',
@@ -385,6 +401,7 @@ function playTorrent(magnetOrUrl, title) {
       .sort((a,b) => b.length - a.length)[0];
 
     if (!videoFile) {
+      clearTimeout(timeoutId);
       showError('Nenhum arquivo de vídeo encontrado neste torrent.');
       return;
     }
@@ -392,6 +409,7 @@ function playTorrent(magnetOrUrl, title) {
     showUI(`Buffering: ${videoFile.name}`, true, true);
 
     videoFile.renderTo(video, { autoplay: true }, err => {
+      clearTimeout(timeoutId);
       if (err) {
         showError('Erro ao renderizar vídeo: ' + err.message + '. Tente outra fonte.');
         return;
@@ -411,7 +429,7 @@ function playTorrent(magnetOrUrl, title) {
       }
     });
 
-    video.addEventListener('canplay', () => { hideUI(); }, { once: true });
+    video.addEventListener('canplay', () => { clearTimeout(timeoutId); hideUI(); }, { once: true });
 
     progressInterval = setInterval(() => {
       const pct = (torrent.progress * 100).toFixed(1);
@@ -421,8 +439,12 @@ function playTorrent(magnetOrUrl, title) {
       document.getElementById('dlSpeed').textContent = '↓ ' + dl;
       document.getElementById('dlPeers').textContent = peers + ' peers';
       document.getElementById('dlProgress').textContent = pct + '%';
-      if (torrent.progress > 0.02) {
-        document.getElementById('playerStatus').textContent = `${videoFile.name.slice(0,40)}...`;
+      if (peers === 0) {
+        document.getElementById('playerStatus').textContent = '🔍 Procurando peers...';
+      } else if (torrent.progress > 0.01) {
+        document.getElementById('playerStatus').textContent = `${videoFile.name.slice(0,40)}`;
+      } else {
+        document.getElementById('playerStatus').textContent = `Conectado a ${peers} peer(s) — aguardando buffer...`;
       }
     }, 1000);
   });
@@ -440,10 +462,12 @@ function showUI(status, spinner, progress) {
   document.getElementById('torrentProgress').style.display = progress ? 'block' : 'none';
   document.getElementById('streamList').style.display = 'none';
   document.getElementById('errorBox').style.display = 'none';
+  document.getElementById('cancelBtn').style.display = spinner ? 'block' : 'none';
 }
 
 function hideUI() {
   document.getElementById('playerUI').classList.add('hidden');
+  document.getElementById('cancelBtn').style.display = 'none';
 }
 
 function showError(msg) {
@@ -452,15 +476,29 @@ function showError(msg) {
   document.getElementById('spinnerEl').style.display = 'none';
   document.getElementById('torrentProgress').style.display = 'none';
   document.getElementById('streamList').style.display = 'none';
+  document.getElementById('cancelBtn').style.display = 'none';
   const eb = document.getElementById('errorBox');
   eb.style.display = 'block';
   eb.textContent = '⚠️ ' + msg;
 }
 
+function cancelTorrent() {
+  stopTorrent();
+  // Re-show stream list if we have streams cached
+  if (window._cachedStreams && window._cachedTitle) {
+    showStreamList(window._cachedStreams, window._cachedTitle);
+  } else {
+    showError('Cancelado. Tente outra fonte ou use o Stremio Web.');
+  }
+}
+
 function showStreamList(streams, title) {
+  window._cachedStreams = streams;
+  window._cachedTitle = title;
   document.getElementById('spinnerEl').style.display = 'none';
   document.getElementById('torrentProgress').style.display = 'none';
   document.getElementById('errorBox').style.display = 'none';
+  document.getElementById('cancelBtn').style.display = 'none';
   document.getElementById('playerStatus').textContent = `${streams.length} fonte(s) — escolha para reproduzir:`;
 
   const list = document.getElementById('streamList');
