@@ -155,6 +155,29 @@
 
   .error-box { background:rgba(192,57,43,0.15); border:1px solid var(--accent2); border-radius:8px; padding:10px 14px; font-size:0.8rem; color:#e88; max-width:420px; }
 
+  .stream-btn-wrap { display:flex; gap:6px; align-items:stretch; }
+  .stream-btn-wrap .stream-btn { flex:1; }
+  .dl-btn {
+    background:var(--card); border:1px solid var(--border); color:var(--accent);
+    padding:9px 11px; border-radius:8px; cursor:pointer; font-size:0.9rem;
+    transition:all 0.2s; display:flex; align-items:center; justify-content:center; flex-shrink:0;
+    text-decoration:none;
+  }
+  .dl-btn:hover { border-color:var(--accent); background:rgba(232,160,32,0.12); }
+
+  .download-bar {
+    display:none; align-items:center; gap:10px;
+    background:rgba(232,160,32,0.08); border:1px solid rgba(232,160,32,0.3);
+    border-radius:8px; padding:8px 12px; max-width:480px; width:100%;
+  }
+  .download-bar.visible { display:flex; }
+  .download-bar span { font-size:0.78rem; color:var(--muted); flex:1; }
+  .download-bar a {
+    background:var(--accent); color:#000; border:none; padding:6px 14px; border-radius:6px;
+    font-family:'DM Sans',sans-serif; font-weight:700; font-size:0.78rem;
+    cursor:pointer; text-decoration:none; white-space:nowrap;
+  }
+
   /* Modal info */
   .modal-info { padding:16px 20px 20px; }
   .modal-title { font-family:'Bebas Neue',cursive; font-size:1.8rem; letter-spacing:1px; margin-bottom:6px; }
@@ -236,6 +259,12 @@
 
         <!-- Stream list -->
         <div class="stream-list" id="streamList" style="display:none"></div>
+
+        <!-- Download bar (shown when playing) -->
+        <div class="download-bar" id="downloadBar">
+          <span id="downloadFileName">Arquivo pronto para baixar</span>
+          <a id="downloadLink" href="#" download>⬇ Baixar</a>
+        </div>
 
         <!-- Error -->
         <div class="error-box" id="errorBox" style="display:none"></div>
@@ -329,6 +358,19 @@ function playTorrent(magnetOrUrl, title) {
       }
     });
 
+    // Expose download link via blob URL
+    videoFile.getBlobURL((err, url) => {
+      if (!err && url) {
+        const dlBar = document.getElementById('downloadBar');
+        const dlLink = document.getElementById('downloadLink');
+        const dlName = document.getElementById('downloadFileName');
+        dlLink.href = url;
+        dlLink.download = videoFile.name;
+        dlName.textContent = videoFile.name.slice(0, 50);
+        dlBar.classList.add('visible');
+      }
+    });
+
     video.addEventListener('canplay', () => { hideUI(); }, { once: true });
 
     progressInterval = setInterval(() => {
@@ -411,7 +453,29 @@ function showStreamList(streams, title) {
         showError('Esta fonte não tem link reproduzível direto.');
       }
     };
-    list.appendChild(btn);
+
+    // Download button
+    const magnet = (s.url && s.url.startsWith('magnet:')) ? s.url : (s.infoHash ? buildMagnet(s) : null);
+    const dlBtn = document.createElement('a');
+    dlBtn.className = 'dl-btn';
+    dlBtn.title = 'Baixar torrent / magnet';
+    dlBtn.innerHTML = '⬇';
+    if (magnet) {
+      dlBtn.href = magnet;
+      dlBtn.title = 'Abrir magnet link (baixar com cliente torrent)';
+    } else if (s.url) {
+      dlBtn.href = s.url;
+      dlBtn.download = label.replace(/[^a-z0-9]/gi,'_') + '.mp4';
+      dlBtn.target = '_blank';
+    } else {
+      dlBtn.onclick = (e) => { e.preventDefault(); showError('Sem link de download disponível para esta fonte.'); };
+    }
+
+    const wrap = document.createElement('div');
+    wrap.className = 'stream-btn-wrap';
+    wrap.appendChild(btn);
+    wrap.appendChild(dlBtn);
+    list.appendChild(wrap);
   });
 }
 
@@ -542,6 +606,7 @@ function closeModal() {
   const video = document.getElementById('videoPlayer');
   video.pause(); video.src = '';
   document.getElementById('playerUI').classList.remove('hidden');
+  document.getElementById('downloadBar').classList.remove('visible');
   document.getElementById('modalOverlay').classList.remove('open');
   document.getElementById('modalCloseBtn').style.display = 'none';
   document.body.style.overflow = '';
