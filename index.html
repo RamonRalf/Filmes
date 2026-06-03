@@ -191,6 +191,23 @@
   ::-webkit-scrollbar { width:6px; }
   ::-webkit-scrollbar-track { background:var(--bg); }
   ::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+
+  /* Toast */
+  .toast {
+    position:fixed; bottom:2rem; left:50%; transform:translateX(-50%) translateY(20px);
+    background:var(--surface); border:1px solid var(--border); border-radius:12px;
+    padding:14px 18px; z-index:999; max-width:340px; width:90%;
+    box-shadow:0 8px 32px rgba(0,0,0,0.6); opacity:0;
+    transition:all 0.3s; pointer-events:none;
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); pointer-events:all; }
+  .toast h4 { font-size:0.85rem; margin-bottom:6px; color:var(--accent); }
+  .toast p { font-size:0.75rem; color:var(--muted); margin-bottom:10px; line-height:1.4; }
+  .toast-actions { display:flex; gap:6px; }
+  .toast-btn { flex:1; padding:7px 10px; border-radius:7px; border:none; cursor:pointer; font-family:'DM Sans',sans-serif; font-size:0.75rem; font-weight:600; transition:all 0.2s; }
+  .toast-btn.primary { background:var(--accent); color:#000; }
+  .toast-btn.secondary { background:var(--card); color:var(--text); border:1px solid var(--border); }
+  .toast-btn:hover { opacity:0.85; }
 </style>
 </head>
 <body>
@@ -236,6 +253,16 @@
 
 <!-- MODAL -->
 <button class="modal-close" id="modalCloseBtn" onclick="closeModal()" style="display:none">✕</button>
+
+<!-- Toast -->
+<div class="toast" id="dlToast">
+  <h4>⬇ Link copiado!</h4>
+  <p>Cole o magnet link no qBittorrent, Transmission ou outro cliente torrent para baixar.</p>
+  <div class="toast-actions">
+    <button class="toast-btn primary" onclick="openMagnetExternal()">Abrir magnet</button>
+    <button class="toast-btn secondary" onclick="closeToast()">Fechar</button>
+  </div>
+</div>
 <div class="modal-overlay" id="modalOverlay">
   <div class="modal" id="modal">
 
@@ -285,6 +312,19 @@
 </div>
 
 <script>
+let lastMagnet = '';
+function showDownloadToast(magnet) {
+  lastMagnet = magnet;
+  const t = document.getElementById('dlToast');
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 6000);
+}
+function closeToast() { document.getElementById('dlToast').classList.remove('show'); }
+function openMagnetExternal() {
+  window.open(lastMagnet, '_blank');
+  closeToast();
+}
+
 const TMDB_KEY = '8265bd1679663a7ea12ac168da84d2e8';
 const BASE = 'https://api.themoviedb.org/3';
 const IMG = 'https://image.tmdb.org/t/p/w500';
@@ -456,20 +496,32 @@ function showStreamList(streams, title) {
 
     // Download button
     const magnet = (s.url && s.url.startsWith('magnet:')) ? s.url : (s.infoHash ? buildMagnet(s) : null);
-    const dlBtn = document.createElement('a');
+    const dlBtn = document.createElement('button');
     dlBtn.className = 'dl-btn';
-    dlBtn.title = 'Baixar torrent / magnet';
+    dlBtn.title = 'Opções de download';
     dlBtn.innerHTML = '⬇';
-    if (magnet) {
-      dlBtn.href = magnet;
-      dlBtn.title = 'Abrir magnet link (baixar com cliente torrent)';
-    } else if (s.url) {
-      dlBtn.href = s.url;
-      dlBtn.download = label.replace(/[^a-z0-9]/gi,'_') + '.mp4';
-      dlBtn.target = '_blank';
-    } else {
-      dlBtn.onclick = (e) => { e.preventDefault(); showError('Sem link de download disponível para esta fonte.'); };
-    }
+    dlBtn.onclick = (e) => {
+      e.stopPropagation();
+      if (magnet) {
+        // Copy magnet to clipboard instead of opening app
+        navigator.clipboard.writeText(magnet).then(() => {
+          dlBtn.innerHTML = '✓';
+          dlBtn.style.color = '#27ae60';
+          setTimeout(() => { dlBtn.innerHTML = '⬇'; dlBtn.style.color = ''; }, 2000);
+          showDownloadToast(magnet);
+        }).catch(() => {
+          showDownloadToast(magnet);
+        });
+      } else if (s.url) {
+        const a = document.createElement('a');
+        a.href = s.url;
+        a.download = label.replace(/[^a-z0-9]/gi,'_') + '.mp4';
+        a.target = '_blank';
+        a.click();
+      } else {
+        showError('Sem link de download disponível para esta fonte.');
+      }
+    };
 
     const wrap = document.createElement('div');
     wrap.className = 'stream-btn-wrap';
